@@ -5,8 +5,8 @@ using System.Collections.Generic;
 
 class MapNode : Branch
 {
-    Grid newgrid;
-    Rule[] rules;
+    public Grid newgrid;
+    public Rule[] rules;
     int NX, NY, NZ, DX, DY, DZ;
 
     override protected bool Load(XElement xelem, bool[] parentSymmetry, Grid grid)
@@ -38,7 +38,7 @@ class MapNode : Branch
         (NY, DY) = readScale(scales[1]);
         (NZ, DZ) = readScale(scales[2]);
 
-        newgrid = Grid.Load(xelem, NX * grid.MX / DX, NY * grid.MY / DY, NZ * grid.MZ / DZ);
+        newgrid = Grid.Load(xelem, grid.MX * NX / DX, grid.MY * NY / DY, grid.MZ * NZ / DZ);
         if (newgrid == null) return false;
 
         if (!base.Load(xelem, parentSymmetry, newgrid)) return false;
@@ -48,6 +48,7 @@ class MapNode : Branch
         foreach (XElement xrule in xelem.Elements("rule"))
         {
             Rule rule = Rule.Load(xrule, grid, newgrid);
+            rule.original = true;
             if (rule == null) return false;
             foreach (Rule r in rule.Symmetries(symmetry, grid.MZ == 1)) ruleList.Add(r);
         }
@@ -95,7 +96,7 @@ class MapNode : Branch
     {
         if (n >= 0) return base.Go();
 
-        newgrid.Clear(-1);
+        newgrid.Clear();
         foreach (Rule rule in rules)
             for (int z = 0; z < grid.MZ; z++) for (int y = 0; y < grid.MY; y++) for (int x = 0; x < grid.MX; x++)
                         if (Matches(rule, x, y, z, grid.state, grid.MX, grid.MY, grid.MZ))
