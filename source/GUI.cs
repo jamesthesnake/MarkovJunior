@@ -2,21 +2,17 @@
 
 using System;
 using System.Linq;
+using System.Xml.Linq;
 using System.Collections.Generic;
 
 static class GUI
 {
-    const int S = 7, SMALL = 3, ZSHIFT = 2, LIMIT = 10;
-    const int HINDENT = 30, HGAP = 2, HARROW = 10, HLINE = 14;
-    const int VSKIP = 2, SMALLVSKIP = 2, FONTSHIFT = 2, AFTERFONT = 4;
+    static readonly int S, SMALL, MAXWIDTH, ZSHIFT, HINDENT, HGAP, HARROW, HLINE, VSKIP, SMALLVSKIP, FONTSHIFT, AFTERFONT;
+    static readonly bool DENSE, D3;
+    public static readonly int BACKGROUND, INACTIVE, ACTIVE;
 
     const string FONT = "Tamzen8x16r", TITLEFONT = "Tamzen8x16b";
-    static readonly bool DENSE = true, D3 = true;
-
-    public const int BACKGROUND = (255 << 24) + (34 << 16) + (34 << 8) + 34;
-    const int IVALUE = 102, INACTIVE = (255 << 24) + (IVALUE << 16) + (IVALUE << 8) + IVALUE, ACTIVE = -1;
-
-    static (bool[], int FX, int FY)[] fonts;
+    static readonly (bool[], int FX, int FY)[] fonts;
 
     static readonly char[] legend = "ABCDEFGHIJKLMNOPQRSTUVWXYZ 12345abcdefghijklmnopqrstuvwxyz\u03bb67890{}[]()<>$*-+=/#_%^@\\&|~?'\"`!,.;:".ToCharArray();
     static readonly Dictionary<char, byte> map;
@@ -35,6 +31,25 @@ static class GUI
         b0 = bitmap[0];
         b1 = bitmap[width - 1];
         fonts[1] = (bitmap.Select(argb => argb != b0 && argb != b1).ToArray(), width / 32, height / 3);
+
+        XElement settings = XDocument.Load("resources/settings.xml").Root;
+        S = settings.Get("squareSize", 7);
+        SMALL = settings.Get("smallSquareSize", 3);
+        MAXWIDTH = settings.Get("maxwidth", 10);
+        ZSHIFT = settings.Get("zshift", 2);
+        HINDENT = settings.Get("hindent", 30);
+        HGAP = settings.Get("hgap", 2);
+        HARROW = settings.Get("harrow", 10);
+        HLINE = settings.Get("hline", 14);
+        VSKIP = settings.Get("vskip", 2);
+        SMALLVSKIP = settings.Get("smallvskip", 2);
+        FONTSHIFT = settings.Get("fontshift", 2);
+        AFTERFONT = settings.Get("afterfont", 4);
+        DENSE = settings.Get("dense", true);
+        D3 = settings.Get("d3", true);
+        BACKGROUND = (255 << 24) + Convert.ToInt32(settings.Get("background", "222222"), 16);
+        INACTIVE = (255 << 24) + Convert.ToInt32(settings.Get("inactive", "666666"), 16);
+        ACTIVE = (255 << 24) + Convert.ToInt32(settings.Get("active", "ffffff"), 16);
     }
 
     public static void Draw(string name, Branch root, Branch current, int[] bitmap, int WIDTH, int HEIGHT, Dictionary<char, int> palette)
@@ -132,10 +147,29 @@ static class GUI
 
             if (node is Branch branch)
             {
+                int LINECOLOR = branch == current && branch.n < 0 ? ACTIVE : INACTIVE;
                 if (branch is WFCNode wfcnode)
                 {
-                    write($"wfc {wfcnode.name}", x, y, branch == current && branch.n < 0 ? ACTIVE : INACTIVE);
+                    write($"wfc {wfcnode.name}", x, y, LINECOLOR);
                     y += fonts[0].FY + VSKIP;
+                }
+                else if (branch is MapNode mapnode)
+                {
+                    for (int r = 0; r < mapnode.rules.Length; r++)
+                    {
+                        Rule rule = mapnode.rules[r];
+                        if (!rule.original) continue;
+                        int s = rule.IMX * rule.IMY > MAXWIDTH ? SMALL : S;
+
+                        x += drawArray(rule.binput, x, y, rule.IMX, rule.IMY, rule.IMZ, characters, s) + HGAP;
+                        drawHLine(x, y + S / 2, HARROW, LINECOLOR, true);
+                        x += HARROW + HGAP;
+                        x += drawArray(rule.output, x, y, rule.OMX, rule.OMY, rule.OMZ, mapnode.newgrid.characters, s) + HGAP;
+
+                        y += Math.Max(rule.IMY, rule.OMY) * s + (Math.Max(rule.IMZ, rule.OMZ) - 1) * ZSHIFT + SMALLVSKIP;
+                        x = level * HINDENT;
+                    }
+                    y += VSKIP;
                 }
 
                 bool markov = branch is MarkovNode;
@@ -156,7 +190,7 @@ static class GUI
                     {
                         Rule rule = rulenode.rules[r];
                         if (!rule.original) continue;
-                        int s = rule.IMX * rule.IMY > LIMIT ? SMALL : S;
+                        int s = rule.IMX * rule.IMY > MAXWIDTH ? SMALL : S;
 
                         int LINECOLOR = (active && IsActive(rulenode, r)) ? ACTIVE : INACTIVE;
                         x += drawArray(rule.binput, x, y, rule.IMX, rule.IMY, rule.IMZ, characters, s) + HGAP;
@@ -270,6 +304,7 @@ static class GUI
 
         void drawLine(Branch branch)
         {
+            if (branch.nodes.Length == 0) return;
             int childLevel = lh[branch.nodes[0]].level;
             drawBracket(branch, childLevel - 1, branch.nodes.Length - 1, false);
             foreach (Node child in branch.nodes) if (child is Branch childBranch) drawLine(childBranch);
